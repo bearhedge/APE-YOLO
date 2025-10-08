@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
+import { getBroker } from "./broker";
+import { getIbkrDiagnostics, placePaperStockOrder, listPaperOpenOrders } from "./broker/ibkr";
 import { 
   insertTradeSchema, 
   insertPositionSchema, 
@@ -16,6 +18,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // WebSocket server for live data
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // Select broker provider (mock or ibkr)
+  const broker = getBroker();
   
   wss.on('connection', (ws) => {
     console.log('Client connected to websocket');
@@ -47,20 +51,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Account info
+  // Account info (via provider)
   app.get('/api/account', async (req, res) => {
     try {
-      const account = await storage.getAccountInfo();
+      const account = await broker.api.getAccount();
       res.json(account);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch account info' });
     }
   });
 
-  // Positions
+  // Positions (via provider)
   app.get('/api/positions', async (req, res) => {
     try {
-      const positions = await storage.getPositions();
+      const positions = await broker.api.getPositions();
       res.json(positions);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch positions' });
@@ -108,58 +112,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Option chains
+  // Option chains (via provider)
   app.get('/api/options/chain/:symbol/:expiration?', async (req, res) => {
     try {
       const { symbol, expiration } = req.params;
-      const chain = await storage.getOptionChain(symbol, expiration);
+      const chain = await broker.api.getOptionChain(symbol, expiration);
       res.json(chain);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch option chain' });
     }
   });
 
-  // Trade validation and submission
-  app.post('/api/trades/validate', async (req, res) => {
+  // Trades list (via provider)
+  app.get('/api/trades', async (_req, res) => {
     try {
-      const spreadConfigSchema = z.object({
-        symbol: z.string(),
-        strategy: z.enum(['put_credit', 'call_credit']),
-        sellLeg: z.object({
-          strike: z.number(),
-          type: z.enum(['call', 'put']),
-          action: z.literal('sell'),
-          premium: z.number(),
-          delta: z.number(),
-          openInterest: z.number()
-        }),
-        buyLeg: z.object({
-          strike: z.number(),
-          type: z.enum(['call', 'put']),
-          action: z.literal('buy'),
-          premium: z.number(),
-          delta: z.number(),
-          openInterest: z.number()
-        }),
-        quantity: z.number().positive(),
-        expiration: z.string()
-      });
-
-      const spreadConfig = spreadConfigSchema.parse(req.body);
-      const validation = await storage.validateTrade(spreadConfig);
-      
-      await storage.createAuditLog({
-        eventType: 'TRADE_VALIDATE',
-        details: `${spreadConfig.symbol} validation: ${validation.results.every(r => r.passed) ? 'PASSED' : 'FAILED'}`,
-        userId: 'system',
-        status: validation.results.every(r => r.passed) ? 'PASSED' : 'FAILED'
-      });
-      
-      res.json(validation);
-    } catch (error) {
-      res.status(400).json({ error: 'Invalid trade configuration' });
+      const trades = await broker.api.getTrades();
+      res.json(trades);
+    } catch (_error) {
+      res.status(500).json({ error: 'Failed to fetch trades' });
     }
   });
+
+  // Trade validation and submission
+  /** Archived deterministic validation endpoint for agent-driven flow
+  app.post('/api/trades/validate', async (req, res) => { ... });
+  */
 
   app.post('/api/trades/submit', async (req, res) => {
     try {
@@ -177,6 +154,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log('Transformed data:', JSON.stringify(transformedData, null, 2));
       const trade = insertTradeSchema.parse(transformedData);
+
+      // If using IBKR provider, place order and record locally
+      if (broker.status.provider === 'ibkr') {
+        const result = await broker.api.placeOrder(trade);
+        if (!result.id && !(result.status || '').startsWith('submitted')) {
+          return res.status(502).json({ error: 'IBKR order placement failed', result });
+        }
+
+        const created = await storage.createTrade(trade);
+        await storage.createAuditLog({
+          eventType: 'TRADE_SUBMIT',
+          details: `${trade.symbol} ${trade.strategy} ${trade.sellStrike}/${trade.buyStrike} x${trade.quantity} [IBKR orderId=${result.id ?? 'n/a'}]`,
+          userId: 'system',
+          status: 'PENDING'
+        });
+        return res.json(created);
+      }
+
       const created = await storage.createTrade(trade);
       
       // Simulate trade execution
@@ -218,33 +213,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Risk rules
-  app.get('/api/rules', async (req, res) => {
+  // Broker status
+  app.get('/api/broker/status', (_req, res) => {
+    res.json(broker.status);
+  });
+
+  // Broker diagnostics (read-only)
+  app.get('/api/broker/diag', (_req, res) => {
+    const last = broker.status.provider === 'ibkr'
+      ? getIbkrDiagnostics()
+      : { oauth: { status: null, ts: '' }, sso: { status: null, ts: '' }, init: { status: null, ts: '' } };
+    res.json({ provider: broker.status.provider, env: broker.status.env, last });
+  });
+
+  // Paper stock order test endpoint (to validate OAuth/SSO/init pipeline)
+  app.post('/api/broker/paper/order', async (req, res) => {
+    if (broker.status.provider !== 'ibkr') {
+      return res.status(400).json({ error: 'Set BROKER_PROVIDER=ibkr for paper order test' });
+    }
+    const schema = z.object({
+      symbol: z.string().min(1),
+      side: z.enum(['BUY', 'SELL']),
+      quantity: z.number().int().positive(),
+      orderType: z.enum(['MKT','LMT']).optional(),
+      limitPrice: z.number().positive().optional(),
+      tif: z.enum(['DAY','GTC']).optional(),
+      outsideRth: z.boolean().optional(),
+    }).refine((v) => v.orderType !== 'LMT' || typeof v.limitPrice === 'number', { message: 'limitPrice required for LMT' });
     try {
-      const rules = await storage.getRiskRules();
-      res.json(rules);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch rules' });
+      const { symbol, side, quantity, orderType, limitPrice, tif, outsideRth } = schema.parse(req.body);
+      const result = await placePaperStockOrder({ symbol, side, quantity, orderType, limitPrice, tif, outsideRth });
+      if ((result.status || '').startsWith('rejected') || !result.id) {
+        return res.status(502).json({ error: 'order_rejected', result });
+      }
+      return res.json({ ok: true, orderId: result.id, result });
+    } catch (err: any) {
+      return res.status(400).json({ error: err?.message || 'invalid_request' });
     }
   });
 
-  app.post('/api/rules', async (req, res) => {
+  // List open orders (paper)
+  app.get('/api/broker/orders', async (_req, res) => {
+    if (broker.status.provider !== 'ibkr') {
+      return res.json([]);
+    }
     try {
-      const rules = insertRiskRulesSchema.parse(req.body);
-      const created = await storage.createOrUpdateRiskRules(rules);
-      
-      await storage.createAuditLog({
-        eventType: 'RULES_UPDATE',
-        details: `Risk rules updated: ${rules.name}`,
-        userId: 'admin',
-        status: 'APPLIED'
-      });
-      
-      res.json(created);
-    } catch (error) {
-      res.status(400).json({ error: 'Invalid rules configuration' });
+      const list = await listPaperOpenOrders();
+      return res.json(Array.isArray(list) ? list : []);
+    } catch {
+      return res.json([]);
     }
   });
+
+  /** Archived risk rules endpoints for SDK-driven agent iteration
+  app.get('/api/rules', async (req, res) => { ... });
+  app.post('/api/rules', async (req, res) => { ... });
+  */
 
   // Audit logs
   app.get('/api/logs', async (req, res) => {

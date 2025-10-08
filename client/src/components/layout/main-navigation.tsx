@@ -10,10 +10,11 @@ import {
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Gauge },
-  { path: '/trade', label: 'Trade', icon: TrendingUp },
-  { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
-  { path: '/rules', label: 'Rules', icon: Settings },
-  { path: '/logs', label: 'Logs', icon: History },
+  // Archived navigation entries for agent-focused iteration
+  // { path: '/trade', label: 'Trade', icon: TrendingUp },
+  // { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  // { path: '/rules', label: 'Rules', icon: Settings },
+  // { path: '/logs', label: 'Logs', icon: History },
 ];
 
 export default function MainNavigation() {

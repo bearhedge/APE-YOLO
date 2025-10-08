@@ -1,0 +1,510 @@
+import type {
+  AccountInfo,
+  OptionChainData,
+  Position,
+  Trade,
+  InsertTrade,
+} from "@shared/schema";
+import type { BrokerProvider } from "./types";
+import { SignJWT, importPKCS8 } from "jose";
+import { randomUUID } from "crypto";
+import { storage } from "../storage";
+
+type PhaseStatus = { status: number | null; ts: string; requestId?: string };
+export type IbkrDiagnostics = {
+  oauth: PhaseStatus;
+  sso: PhaseStatus;
+  init: PhaseStatus;
+};
+
+type IbkrConfig = {
+  baseUrl?: string;
+  accountId?: string;
+  env: "paper" | "live";
+};
+
+type OAuthToken = { access_token: string; expires_in: number };
+
+class IbkrClient {
+  private baseUrl: string;
+  private accountId?: string;
+  private env: "paper" | "live";
+
+  private accessToken: string | null = null;
+  private accessTokenExpiryMs = 0;
+  private ssoSessionId: string | null = null;
+  private sessionReady = false;
+  private last: IbkrDiagnostics = {
+    oauth: { status: null, ts: "" },
+    sso: { status: null, ts: "" },
+    init: { status: null, ts: "" },
+  };
+
+  constructor(cfg: IbkrConfig) {
+    this.baseUrl = cfg.baseUrl || "https://api.ibkr.com";
+    this.accountId = cfg.accountId;
+    this.env = cfg.env;
+  }
+
+  private now() {
+    return Date.now();
+  }
+
+  private async signClientAssertion(): Promise<string> {
+    const clientId = process.env.IBKR_CLIENT_ID;
+    const clientKeyId = process.env.IBKR_CLIENT_KEY_ID; // kid
+    const privateKeyPem = process.env.IBKR_PRIVATE_KEY;
+
+    if (!clientId || !clientKeyId || !privateKeyPem) {
+      throw new Error("IBKR OAuth env vars missing (IBKR_CLIENT_ID, IBKR_CLIENT_KEY_ID, IBKR_PRIVATE_KEY)");
+    }
+
+    const key = await importPKCS8(privateKeyPem, "RS256");
+    const now = Math.floor(Date.now() / 1000);
+
+    const jwt = await new SignJWT({
+      iss: clientId,
+      sub: clientId,
+      aud: `${this.baseUrl}/oauth2/api/v1/token`,
+      jti: randomUUID(),
+      iat: now,
+      exp: now + 60,
+    })
+      .setProtectedHeader({ alg: "RS256", kid: clientKeyId, typ: "JWT" })
+      .sign(key);
+
+    return jwt;
+  }
+
+  private async getOAuthToken(): Promise<string> {
+    if (this.accessToken && this.accessTokenExpiryMs - 5_000 > this.now()) {
+      return this.accessToken;
+    }
+
+    const clientId = process.env.IBKR_CLIENT_ID;
+    if (!clientId) throw new Error("IBKR_CLIENT_ID missing");
+
+    const clientAssertion = await this.signClientAssertion();
+
+    const url = `${this.baseUrl}/oauth2/api/v1/token`;
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: clientAssertion,
+    });
+
+    const oauthReqId = randomUUID();
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+
+    this.last.oauth = { status: resp.status, ts: new Date().toISOString(), requestId: oauthReqId };
+    if (!resp.ok) {
+      let snippet = "";
+      try { snippet = (await resp.text()).slice(0, 200); } catch {}
+      await storage.createAuditLog({
+        eventType: "IBKR_OAUTH_TOKEN",
+        details: `FAILED http=${resp.status} req=${oauthReqId} body=${snippet}`,
+        status: "FAILED",
+      });
+      console.error(`[IBKR][${oauthReqId}] POST /oauth2/api/v1/token -> ${resp.status} ${snippet}`);
+      throw new Error(`IBKR OAuth token request failed: ${resp.status}`);
+    }
+
+    const json = (await resp.json()) as OAuthToken;
+    this.accessToken = json.access_token;
+    this.accessTokenExpiryMs = this.now() + json.expires_in * 1000;
+
+    await storage.createAuditLog({
+      eventType: "IBKR_OAUTH_TOKEN",
+      details: `OK http=${resp.status} req=${oauthReqId}`,
+      status: "SUCCESS",
+    });
+    return this.accessToken;
+  }
+
+  private async createSSOSession(token: string): Promise<void> {
+    if (this.ssoSessionId) return;
+
+    const credential = process.env.IBKR_CREDENTIAL;
+    const allowedIp = process.env.IBKR_ALLOWED_IP;
+    const url = `${this.baseUrl}/gw/api/v1/sso-sessions`;
+
+    const ssoReqId = randomUUID();
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        credential,
+        claims: allowedIp ? { ip: allowedIp } : undefined,
+      }),
+    });
+    this.last.sso = { status: resp.status, ts: new Date().toISOString(), requestId: ssoReqId };
+    if (!resp.ok) {
+      let snippet = "";
+      try { snippet = (await resp.text()).slice(0, 200); } catch {}
+      await storage.createAuditLog({
+        eventType: "IBKR_SSO_SESSION",
+        details: `FAILED http=${resp.status} req=${ssoReqId} body=${snippet}`,
+        status: "FAILED",
+      });
+      console.error(`[IBKR][${ssoReqId}] POST /gw/api/v1/sso-sessions -> ${resp.status} ${snippet}`);
+      throw new Error(`IBKR SSO session failed: ${resp.status}`);
+    }
+    const json = (await resp.json()) as { session_id?: string };
+    this.ssoSessionId = json.session_id || "ok";
+    await storage.createAuditLog({ eventType: "IBKR_SSO_SESSION", details: `OK http=${resp.status} req=${ssoReqId}` , status: "SUCCESS" });
+  }
+
+  private async initBrokerage(token: string): Promise<void> {
+    if (this.sessionReady) return;
+    const url = `${this.baseUrl}/v1/api/iserver/auth/ssodh/init`;
+    const initReqId = randomUUID();
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    this.last.init = { status: resp.status, ts: new Date().toISOString(), requestId: initReqId };
+    if (!resp.ok) {
+      let snippet = "";
+      try { snippet = (await resp.text()).slice(0, 200); } catch {}
+      await storage.createAuditLog({
+        eventType: "IBKR_INIT",
+        details: `FAILED http=${resp.status} req=${initReqId} body=${snippet}`,
+        status: "FAILED",
+      });
+      console.error(`[IBKR][${initReqId}] POST /v1/api/iserver/auth/ssodh/init -> ${resp.status} ${snippet}`);
+      throw new Error(`IBKR init failed: ${resp.status}`);
+    }
+    this.sessionReady = true;
+    await storage.createAuditLog({ eventType: "IBKR_INIT", details: `OK http=${resp.status} req=${initReqId}` , status: "SUCCESS" });
+  }
+
+  private async ensureReady(retry = true): Promise<string> {
+    try {
+      const token = await this.getOAuthToken();
+      await this.createSSOSession(token);
+      await this.initBrokerage(token);
+      return token;
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (retry && (msg.includes("401") || msg.includes("403"))) {
+        this.accessToken = null;
+        this.accessTokenExpiryMs = 0;
+        this.ssoSessionId = null;
+        this.sessionReady = false;
+        return this.ensureReady(false);
+      }
+      throw err;
+    }
+  }
+
+  private authHeaders(token: string) {
+    return {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    } as Record<string, string>;
+  }
+
+  async getAccount(): Promise<AccountInfo> {
+    const token = await this.ensureReady();
+    const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
+    try {
+      const resp = await fetch(
+        `${this.baseUrl}/v1/api/portfolio/${encodeURIComponent(accountId)}/summary`,
+        { headers: this.authHeaders(token) },
+      );
+      if (!resp.ok) throw new Error(`status ${resp.status}`);
+      const data = (await resp.json()) as any;
+      const info: AccountInfo = {
+        accountNumber: accountId || "",
+        buyingPower: Number(data?.availablefunds || 0),
+        portfolioValue: Number(data?.equitywithloanvalue || 0),
+        netDelta: Number(data?.netdelta || 0),
+        dayPnL: Number(data?.daytradesremaining || 0),
+        marginUsed: Number(data?.initialmargin || 0),
+      };
+      return info;
+    } catch {
+      // Fallback to zeros if IBKR request fails
+      return {
+        accountNumber: accountId || "",
+        buyingPower: 0,
+        portfolioValue: 0,
+        netDelta: 0,
+        dayPnL: 0,
+        marginUsed: 0,
+      };
+    }
+  }
+
+  async getPositions(): Promise<Position[]> {
+    const token = await this.ensureReady();
+    const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
+    try {
+      const resp = await fetch(
+        `${this.baseUrl}/v1/api/portfolio/${encodeURIComponent(accountId)}/positions`,
+        { headers: this.authHeaders(token) },
+      );
+      if (!resp.ok) throw new Error(`status ${resp.status}`);
+      const items = (await resp.json()) as any[];
+      // Minimal mapping: only map options legs we can infer; return empty if unknown
+      const positions: Position[] = (items || [])
+        .filter((p) => p?.assetClass === "OPT")
+        .map((p) => ({
+          id: String(p?.conid || randomUUID()),
+          symbol: String(p?.symbol || p?.localSymbol || ""),
+          strategy: "put_credit",
+          sellStrike: "0",
+          buyStrike: "0",
+          expiration: new Date(),
+          quantity: Number(p?.position || 0),
+          openCredit: "0",
+          currentValue: String(Number(p?.marketPrice || 0) * 100),
+          delta: String(Number(p?.delta || 0)),
+          marginRequired: "0",
+          openedAt: new Date(),
+          status: "open",
+        }));
+      return positions;
+    } catch {
+      return [];
+    }
+  }
+
+  private async resolveConid(symbol: string, token: string): Promise<number | null> {
+    const url = `${this.baseUrl}/v1/api/iserver/secdef/search`;
+    const resp = await fetch(`${url}?symbol=${encodeURIComponent(symbol)}&name=${encodeURIComponent(symbol)}&secType=STK`, {
+      headers: this.authHeaders(token),
+    });
+    if (!resp.ok) return null;
+    const arr = (await resp.json()) as any[];
+    const first = arr?.[0];
+    return typeof first?.conid === "number" ? first.conid : null;
+  }
+
+  async getOptionChain(symbol: string, expiration?: string): Promise<OptionChainData> {
+    const token = await this.ensureReady();
+    // Try to resolve underlying price via snapshot; fall back to 0
+    let underlyingPrice = 0;
+    try {
+      const conid = await this.resolveConid(symbol, token);
+      if (conid) {
+        const snap = await fetch(
+          `${this.baseUrl}/v1/api/iserver/marketdata/snapshot?conids=${conid}`,
+          { headers: this.authHeaders(token) },
+        );
+        if (snap.ok) {
+          const data = (await snap.json()) as any[];
+          const last = data?.[0]?.["31"] ?? data?.[0]?.last;
+          if (last != null) underlyingPrice = Number(last);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return {
+      symbol,
+      underlyingPrice,
+      underlyingChange: 0,
+      options: [],
+    };
+  }
+
+  async getTrades(): Promise<Trade[]> {
+    // Not implemented yet — could map from orders; return empty list to keep UI stable
+    return [];
+  }
+
+  async placeOrder(_trade: InsertTrade): Promise<{ id?: string; status: string; raw?: any }> {
+    // Minimal paper trading order using underlying conid, single-leg MKT
+    const trade = _trade;
+    const token = await this.ensureReady();
+    const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
+    if (!trade?.symbol || !accountId) {
+      return { status: "rejected_400" };
+    }
+    // Resolve underlying conid
+    const conid = await this.resolveConid(trade.symbol, token);
+    if (!conid) {
+      await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `FAILED http=0 reason=no_conid`, status: "FAILED" });
+      return { status: "rejected_no_conid" };
+    }
+
+    const side = "SELL"; // single-leg placeholder for credit strategies
+    const quantity = Math.max(1, Number(trade.quantity || 1));
+    const body = {
+      orders: [
+        {
+          acctId: accountId,
+          conid,
+          orderType: "MKT",
+          side,
+          tif: "DAY",
+          quantity,
+        },
+      ],
+    };
+
+    const url = `${this.baseUrl}/v1/api/iserver/account/${encodeURIComponent(accountId)}/orders`;
+    const reqId = randomUUID();
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: this.authHeaders(token),
+      body: JSON.stringify(body),
+    });
+
+    const http = resp.status;
+    let raw: any = null;
+    try { raw = await resp.json(); } catch {}
+
+    if (!resp.ok) {
+      let snippet = "";
+      try { snippet = typeof raw === 'string' ? raw.slice(0,200) : JSON.stringify(raw).slice(0,200); } catch {}
+      await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `FAILED http=${http} req=${reqId} body=${snippet}`, status: "FAILED" });
+      console.error(`[IBKR][${reqId}] POST /v1/api/iserver/account/{acct}/orders -> ${http} ${snippet}`);
+      return { status: `rejected_${http}`, raw };
+    }
+
+    // Try to extract an order id
+    let orderId: string | undefined = undefined;
+    try {
+      const arr = Array.isArray(raw) ? raw : raw?.orders || raw?.data || [];
+      const first = Array.isArray(arr) ? arr[0] : undefined;
+      orderId = String(first?.id || first?.orderId || first?.c_oid || "").trim() || undefined;
+    } catch {}
+
+    await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `OK http=${http} req=${reqId} orderId=${orderId ?? 'n/a'}`, status: "SUCCESS" });
+    return { id: orderId, status: "submitted", raw };
+  }
+
+  getDiagnostics(): IbkrDiagnostics {
+    return this.last;
+  }
+
+  async placeStockOrder(
+    symbol: string,
+    side: 'BUY' | 'SELL',
+    quantity: number,
+    opts?: { orderType?: 'MKT'|'LMT'; limitPrice?: number; tif?: 'DAY'|'GTC'; outsideRth?: boolean }
+  ): Promise<{ id?: string; status: string; raw?: any }> {
+    const token = await this.ensureReady();
+    const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
+    if (!symbol || !accountId || !quantity || quantity <= 0) {
+      return { status: "rejected_400" };
+    }
+    const conid = await this.resolveConid(symbol, token);
+    if (!conid) {
+      await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `FAILED http=0 reason=no_conid`, status: "FAILED" });
+      return { status: "rejected_no_conid" };
+    }
+
+    const orderType = opts?.orderType ?? 'MKT';
+    const tif = opts?.tif ?? 'DAY';
+    const outsideRTH = !!opts?.outsideRth;
+
+    const order: any = {
+      acctId: accountId,
+      conid,
+      orderType,
+      side,
+      tif,
+      quantity: Math.floor(quantity),
+      outsideRTH,
+    };
+    if (orderType === 'LMT') {
+      order.price = Number(opts?.limitPrice ?? NaN);
+    }
+
+    const body = { orders: [ order ] };
+    const url = `${this.baseUrl}/v1/api/iserver/account/${encodeURIComponent(accountId)}/orders`;
+    const reqId = randomUUID();
+    const resp = await fetch(url, { method: "POST", headers: this.authHeaders(token), body: JSON.stringify(body) });
+    const http = resp.status;
+    let raw: any = null;
+    try { raw = await resp.json(); } catch {}
+    if (!resp.ok) {
+      let snippet = "";
+      try { snippet = typeof raw === 'string' ? raw.slice(0,200) : JSON.stringify(raw).slice(0,200); } catch {}
+      await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `FAILED http=${http} req=${reqId} body=${snippet}` , status: "FAILED" });
+      console.error(`[IBKR][${reqId}] POST /v1/api/iserver/account/{acct}/orders -> ${http} ${snippet}`);
+      return { status: `rejected_${http}`, raw };
+    }
+    let orderId: string | undefined = undefined;
+    try {
+      const arr = Array.isArray(raw) ? raw : raw?.orders || raw?.data || [];
+      const first = Array.isArray(arr) ? arr[0] : undefined;
+      orderId = String(first?.id || first?.orderId || first?.c_oid || "").trim() || undefined;
+    } catch {}
+    await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `OK http=${http} req=${reqId} orderId=${orderId ?? 'n/a'}` , status: "SUCCESS" });
+    return { id: orderId, status: "submitted", raw };
+  }
+
+  async getOpenOrders(): Promise<any[]> {
+    const token = await this.ensureReady();
+    // Attempt standard open orders endpoint
+    const url = `${this.baseUrl}/v1/api/iserver/account/orders`;
+    const reqId = randomUUID();
+    const resp = await fetch(url, { headers: this.authHeaders(token) });
+    const http = resp.status;
+    if (!resp.ok) {
+      let snippet = "";
+      try { snippet = (await resp.text()).slice(0,200); } catch {}
+      console.error(`[IBKR][${reqId}] GET /v1/api/iserver/account/orders -> ${http} ${snippet}`);
+      return [];
+    }
+    try {
+      const data = await resp.json();
+      const list = Array.isArray(data) ? data : (data?.orders || data?.data || []);
+      return list;
+    } catch {
+      return [];
+    }
+  }
+}
+
+// Provider factory and diagnostics access
+let activeClient: IbkrClient | null = null;
+export function getIbkrDiagnostics(): IbkrDiagnostics {
+  return activeClient
+    ? activeClient.getDiagnostics()
+    : { oauth: { status: null, ts: "" }, sso: { status: null, ts: "" }, init: { status: null, ts: "" } };
+}
+
+export function createIbkrProvider(config: IbkrConfig): BrokerProvider {
+  const client = new IbkrClient(config);
+  activeClient = client;
+  return {
+    getAccount: () => client.getAccount(),
+    getPositions: () => client.getPositions(),
+    getOptionChain: (symbol: string, expiration?: string) => client.getOptionChain(symbol, expiration),
+    getTrades: () => client.getTrades(),
+    placeOrder: (trade: InsertTrade) => client.placeOrder(trade),
+  };
+}
+
+// Utility for testing paper stock orders (e.g., BUY 1 SPY)
+export async function placePaperStockOrder(params: { symbol: string; side: 'BUY' | 'SELL'; quantity: number; orderType?: 'MKT'|'LMT'; limitPrice?: number; tif?: 'DAY'|'GTC'; outsideRth?: boolean }) {
+  if (!activeClient) throw new Error('IBKR client not initialized');
+  return activeClient.placeStockOrder(params.symbol, params.side, params.quantity, {
+    orderType: params.orderType,
+    limitPrice: params.limitPrice,
+    tif: params.tif,
+    outsideRth: params.outsideRth,
+  });
+}
+
+export async function listPaperOpenOrders() {
+  if (!activeClient) throw new Error('IBKR client not initialized');
+  return activeClient.getOpenOrders();
+}
