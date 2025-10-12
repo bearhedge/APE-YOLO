@@ -27,16 +27,16 @@ ApeX Options embraces a **monochrome professional aesthetic** with clean lines, 
 ## Typography
 
 ### Font Family
-- **Primary Font**: `Orbitron` (all weights) - Used for ALL text throughout the application
-- Import via Google Fonts: `@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');`
+- **Primary Font**: `Century Gothic` - Used for ALL text throughout the application
+- System font stack: `'Century Gothic', 'CenturyGothic', 'AppleGothic', sans-serif`
 
 ### Text Hierarchy
-- **Headings (H1)**: Orbitron Bold (700), 2xl-3xl
-- **Headings (H2)**: Orbitron SemiBold (600), xl-2xl
-- **Headings (H3)**: Orbitron Medium (500), lg-xl
-- **Body Text**: Orbitron Regular (400), sm-base
-- **Small Text**: Orbitron Regular (400), xs-sm
-- **Numbers/Data**: Orbitron Medium (500), tabular-nums
+- **Headings (H1)**: Century Gothic Bold, 2xl-3xl
+- **Headings (H2)**: Century Gothic SemiBold, xl-2xl
+- **Headings (H3)**: Century Gothic Medium, lg-xl
+- **Body Text**: Century Gothic Regular, sm-base
+- **Small Text**: Century Gothic Regular, xs-sm
+- **Numbers/Data**: Century Gothic Medium, tabular-nums
 
 ## Layout & Spacing
 
@@ -89,7 +89,7 @@ className="bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-6
 - **Rows**: Hover state with dark-gray background
 - **Borders**: Hairline borders (border-white/10)
 - **Padding**: px-4 py-3 for cells
-- **Font**: Orbitron Regular, tabular-nums for numbers
+- **Font**: Century Gothic Regular, tabular-nums for numbers
 
 ### Forms
 - **Input**: Dark gray background, white text, hairline border
@@ -109,7 +109,7 @@ className="bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-6
 - **Position**: Sticky top-0
 - **Background**: Black with border-bottom (border-white/10)
 - **Height**: h-16
-- **Items**: Orbitron Medium, hover:text-white transition
+- **Items**: Century Gothic Medium, hover:text-white transition
 - **Active**: White text with underline
 - **Status Indicator**: Tiny green dot + "ONLINE" text (right side)
 
@@ -216,7 +216,7 @@ className="bg-red-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-6
 ## Do's and Don'ts
 
 ### Do:
-✅ Use Orbitron for all text
+✅ Use Century Gothic for all text
 ✅ Maintain monochrome palette
 ✅ Apply 1px hairline borders (border-white/10)
 ✅ Use rounded-2xl for cards

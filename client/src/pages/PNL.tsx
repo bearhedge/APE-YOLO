@@ -6,6 +6,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getPNL } from '@/lib/api';
 import type { PnlRow } from '@shared/types';
 
 export function PNL() {
@@ -15,6 +16,7 @@ export function PNL() {
 
   const { data, isLoading } = useQuery<PnlRow[]>({
     queryKey: ['/api/pnl'],
+    queryFn: getPNL,
   });
 
   const filteredData = (data || []).filter((row) => {

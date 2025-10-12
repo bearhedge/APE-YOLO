@@ -1,10 +1,19 @@
 # Overview
 
-Orca Options is a professional options trading platform built for managing credit spread strategies. The application focuses on SPY 0DTE (zero days to expiration) and weekly single option trades, providing real-time market data, portfolio management, risk rules enforcement, and comprehensive trade execution capabilities. The platform emphasizes risk management through configurable rules and provides detailed audit logging for all trading activities.
+ApeX Options is a professional options trading platform built with a clean monochrome design (black/white/greys only) and Century Gothic typography. The application features a comprehensive MVP with landing page, 3-step onboarding flow (Google login, IBKR connection, risk preferences), multi-page dashboard interface, immutable P&L tracking with SHA-256 hashing, and agent-controlled trading automation.
 
 # User Preferences
 
 Preferred communication style: Simple, everyday language.
+
+# Design System
+
+**Visual Identity:**
+- Clean monochrome design: Black (#000), Charcoal (#0B0B0B), Dark Gray (#1A1A1A), Mid Gray (#2B2B2B), Silver (#A6A6A6), White (#FFF)
+- Typography: Century Gothic exclusively for all text (headings and body)
+- No neon colors, no gradients, no animated backgrounds
+- Hairline borders (1px rgba(255,255,255,0.1)) and subtle shadows
+- Professional trading aesthetic with clarity and readability focus
 
 # System Architecture
 

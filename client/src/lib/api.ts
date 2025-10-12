@@ -76,10 +76,16 @@ function getMockData(endpoint: string): unknown {
   }
 
   if (endpoint === '/api/pnl') {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const twoDaysAgo = new Date(today);
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    
     return [
       {
         tradeId: 'TR-001',
-        ts: new Date().toISOString(),
+        ts: twoDaysAgo.toISOString(),
         symbol: 'SPY',
         strategy: 'Put Credit Spread',
         side: 'SELL' as const,
@@ -90,6 +96,34 @@ function getMockData(endpoint: string): unknown {
         realized: 147.50,
         run: 147.50,
         notes: 'Closed at 50% profit target',
+      },
+      {
+        tradeId: 'TR-002',
+        ts: yesterday.toISOString(),
+        symbol: 'SPY',
+        strategy: 'Call Credit Spread',
+        side: 'SELL' as const,
+        qty: 2,
+        entry: 455.0,
+        exit: 453.0,
+        fees: 5.00,
+        realized: 395.00,
+        run: 395.00,
+        notes: 'Full profit capture',
+      },
+      {
+        tradeId: 'TR-003',
+        ts: today.toISOString(),
+        symbol: 'SPY',
+        strategy: 'Put Credit Spread',
+        side: 'SELL' as const,
+        qty: 1,
+        entry: 448.0,
+        exit: null,
+        fees: 2.50,
+        realized: 0,
+        run: -125.00,
+        notes: 'Position still open',
       },
     ];
   }
