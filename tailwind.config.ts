@@ -61,11 +61,15 @@ export default {
           border: "var(--sidebar-border)",
           ring: "var(--sidebar-ring)",
         },
+        charcoal: "#0B0B0B",
+        "dark-gray": "#1A1A1A",
+        "mid-gray": "#2B2B2B",
+        silver: "#A6A6A6",
       },
       fontFamily: {
-        sans: ["Inter", "var(--font-sans)"],
+        sans: ["Orbitron", "sans-serif"],
         serif: ["var(--font-serif)"],
-        mono: ["JetBrains Mono", "var(--font-mono)"],
+        mono: ["monospace"],
       },
       keyframes: {
         "accordion-down": {
