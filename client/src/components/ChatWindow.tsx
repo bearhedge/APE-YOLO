@@ -45,7 +45,7 @@ export default function ChatWindow() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Welcome to APEYOLO. The safest way to YOLO. How can I assist you today?',
+      content: 'Welcome to APEYOLO. THE SAFEST WAY TO YOLO. How can I assist you today?',
       timestamp: new Date()
     }
   ]);
@@ -70,7 +70,7 @@ export default function ChatWindow() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Processing your request. The Matrix is analyzing optimal strategies...',
+        content: 'Processing your request. Analyzing optimal strategies...',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
@@ -85,19 +85,16 @@ export default function ChatWindow() {
   ];
 
   return (
-    <div className="relative flex h-screen bg-background text-foreground overflow-hidden">
-      {/* Matrix Rain Background */}
-      <MatrixRain />
-
+    <div className="relative flex h-screen bg-black text-foreground overflow-hidden">
       {/* Content Layer */}
       <div className="relative z-10 flex w-full">
         {/* Left Sidebar */}
-        <div className="w-64 border-r border-[#00FF00]/20 bg-card/95 backdrop-blur-sm flex flex-col">
-          <div className="p-4 border-b border-[#00FF00]/20">
-            <h1 className="text-xl font-bold font-[Orbitron]">
-              <span className="neon-green">APEYOLO</span>
+        <div className="w-64 border-r border-white/10 bg-charcoal flex flex-col">
+          <div className="p-4 border-b border-white/10">
+            <h1 className="text-xl font-bold tracking-wide">
+              APEYOLO
             </h1>
-            <p className="text-xs text-muted-foreground mt-1 font-mono">The Safest Way to YOLO</p>
+            <p className="text-xs text-silver mt-1 tracking-wider">THE SAFEST WAY TO YOLO.</p>
           </div>
           
           <nav className="flex-1 p-2">
@@ -108,8 +105,8 @@ export default function ChatWindow() {
                 className={cn(
                   'w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-all mb-1',
                   activeSection === item.id
-                    ? 'bg-[#00FF00] text-black shadow-[0_0_15px_rgba(0,255,0,0.5)]'
-                    : 'text-muted-foreground hover:bg-[#00FF00]/10 hover:text-[#00FF00] border border-transparent hover:border-[#00FF00]/30'
+                    ? 'bg-white text-black'
+                    : 'text-silver hover:bg-dark-gray hover:text-white border border-transparent'
                 )}
                 data-testid={`nav-${item.id}`}
               >
@@ -119,19 +116,19 @@ export default function ChatWindow() {
             ))}
           </nav>
 
-          <div className="p-4 border-t border-[#00FF00]/20">
-            <div className="text-xs text-muted-foreground font-mono">
+          <div className="p-4 border-t border-white/10">
+            <div className="text-xs text-silver">
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-[#00FF00] shadow-[0_0_10px_rgba(0,255,0,0.8)]" />
-                <span className="neon-green">MATRIX ONLINE</span>
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-white">ONLINE</span>
               </div>
-              <div className="text-[#00BFFF]">SPY: $450.23</div>
+              <div className="text-silver">SPY: $450.23</div>
             </div>
           </div>
         </div>
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col bg-background/50 backdrop-blur-sm">
+        <div className="flex-1 flex flex-col bg-black">
           {/* Messages */}
           <div className="flex-1 p-6 overflow-y-auto">
             <div className="max-w-4xl mx-auto space-y-6">
@@ -147,8 +144,8 @@ export default function ChatWindow() {
                     className={cn(
                       'max-w-[80%] rounded-lg p-4 transition-all',
                       message.role === 'user'
-                        ? 'bg-[#00FF00]/10 border border-[#00FF00]/30 text-foreground'
-                        : 'bg-card/80 border border-[#00BFFF]/30 backdrop-blur-sm'
+                        ? 'bg-white text-black'
+                        : 'bg-dark-gray border border-white/10'
                     )}
                     data-testid={`message-${message.role}`}
                   >
@@ -163,20 +160,20 @@ export default function ChatWindow() {
           </div>
 
           {/* Input Bar */}
-          <div className="border-t border-[#00FF00]/20 bg-card/95 backdrop-blur-sm p-4">
+          <div className="border-t border-white/10 bg-charcoal p-4">
             <div className="max-w-4xl mx-auto flex gap-2">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Enter command: execute trade, analyze position, check P&L..."
-                className="flex-1 bg-black/50 border-[#00FF00]/30 focus:border-[#00FF00] focus:ring-[#00FF00] font-mono text-[#00FF00]"
+                className="flex-1 input-monochrome"
                 data-testid="input-chat"
               />
               <Button 
                 onClick={handleSend} 
                 size="icon"
-                className="bg-[#00FF00] text-black hover:bg-[#00FF00]/90 shadow-[0_0_15px_rgba(0,255,0,0.5)] hover:shadow-[0_0_25px_rgba(0,255,0,0.7)] transition-all"
+                className="btn-primary"
                 data-testid="button-send"
               >
                 <Send className="w-4 h-4" />
