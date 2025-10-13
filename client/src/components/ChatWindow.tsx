@@ -45,7 +45,7 @@ export default function ChatWindow() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Welcome to ApeX Options. At the Apex of Options Trading – where discipline meets tribe. How can I assist you today?',
+      content: 'Welcome to APEYOLO. The safest way to YOLO. How can I assist you today?',
       timestamp: new Date()
     }
   ]);
@@ -95,9 +95,9 @@ export default function ChatWindow() {
         <div className="w-64 border-r border-[#00FF00]/20 bg-card/95 backdrop-blur-sm flex flex-col">
           <div className="p-4 border-b border-[#00FF00]/20">
             <h1 className="text-xl font-bold font-[Orbitron]">
-              Ape<span className="neon-green">X</span> Options
+              <span className="neon-green">APEYOLO</span>
             </h1>
-            <p className="text-xs text-muted-foreground mt-1 font-mono">Agentic Trading Interface</p>
+            <p className="text-xs text-muted-foreground mt-1 font-mono">The Safest Way to YOLO</p>
           </div>
           
           <nav className="flex-1 p-2">

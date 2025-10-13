@@ -1,7 +1,10 @@
-# ApeX Options Design Guidelines
+# APEYOLO Design Guidelines
+
+## Brand Identity
+**APEYOLO** - "THE SAFEST WAY TO YOLO."
 
 ## Design Philosophy
-ApeX Options embraces a **monochrome professional aesthetic** with clean lines, subtle shadows, and hairline borders. The design prioritizes clarity, readability, and a premium trading experience.
+APEYOLO embraces a **monochrome professional aesthetic** with clean lines, subtle shadows, and hairline borders. The design prioritizes clarity, readability, and a premium trading experience.
 
 ## Color Palette
 

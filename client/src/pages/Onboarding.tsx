@@ -63,7 +63,7 @@ export function Onboarding() {
         {/* Stepper Header */}
         <div className="mb-12">
           <h1 className="text-4xl font-bold text-center mb-8" data-testid="text-onboarding-title">
-            Get Started with ApeX Options
+            Get Started with APEYOLO
           </h1>
           
           <div className="flex items-center justify-center gap-4">

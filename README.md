@@ -1,37 +1,38 @@
-# ApeX Options
+# APEYOLO
 
-![Matrix-Inspired Trading Platform](https://img.shields.io/badge/Status-Active-00FF00?style=for-the-badge)
-![Built with React](https://img.shields.io/badge/React-TypeScript-00BFFF?style=for-the-badge&logo=react)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-00FF00?style=for-the-badge&logo=tailwindcss)
+![Professional Trading Platform](https://img.shields.io/badge/Status-Active-00FF00?style=for-the-badge)
+![Built with React](https://img.shields.io/badge/React-TypeScript-000000?style=for-the-badge&logo=react)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-000000?style=for-the-badge&logo=tailwindcss)
 
-**At the Apex of Options Trading – where discipline meets tribe.**
+**THE SAFEST WAY TO YOLO.**
 
-ApeX Options is a Matrix-inspired options trading platform skeleton featuring a futuristic design with neon aesthetic, built for speed and scalability. This agentic chat interface combines cutting-edge UI/UX with powerful trading capabilities.
+APEYOLO is a professional options trading platform featuring a clean monochrome design, AI-powered automation, and institutional-grade risk management. Built for systematic traders who value precision and control.
 
 ## 🎯 Features
 
-- **Agentic Chat Interface**: Natural language trading commands
-- **Matrix Theme**: Neon green glowing effects, falling code animation
-- **Real-time Data**: Live market updates and position tracking
-- **Dark Mode**: Pure black background with cyber aesthetics
-- **Responsive Design**: Optimized for desktop and mobile
+- **AI-Powered Agent**: GPT-4 driven decision making with customizable strategies
+- **Risk Management**: Configurable limits, circuit breakers, and automated position management
+- **Immutable Audit Trail**: Cryptographic SHA-256 hashing for compliance and verification
+- **Real-time Execution**: Direct IBKR integration with sub-second order placement
+- **Clean Monochrome Design**: Professional aesthetic with Century Gothic typography
 
 ## 🚀 Tech Stack
 
 - **Frontend**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS with custom Matrix theme
-- **Typography**: Orbitron (headings), Inter (body), Source Code Pro (monospace)
+- **Styling**: Tailwind CSS with monochrome theme
+- **Typography**: Century Gothic (all text)
 - **UI Components**: shadcn/ui with Radix primitives
-- **State Management**: TanStack Query
+- **State Management**: TanStack Query + Zustand
 - **Backend**: Node.js + Express + PostgreSQL
 
-## 💚 Color Palette
+## 🎨 Color Palette
 
 - **Background**: `#000000` (Pure Black)
-- **Primary Accent**: `#00FF00` (Neon Green)
-- **Secondary Accent**: `#E0E0E0` (Light Gray)
-- **Cyber Highlight**: `#00BFFF` (Cyber Blue)
-- **Destructive**: `#FF0000` (Red)
+- **Charcoal**: `#0B0B0B` (Card backgrounds)
+- **Dark Gray**: `#1A1A1A` (Hover states)
+- **Mid Gray**: `#2B2B2B` (Borders)
+- **Silver**: `#A6A6A6` (Secondary text)
+- **White**: `#FFFFFF` (Primary text)
 
 ## 🛠️ Setup Instructions
 
@@ -46,7 +47,7 @@ ApeX Options is a Matrix-inspired options trading platform skeleton featuring a 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd apex-options
+   cd apeyolo
    ```
 
 2. **Install dependencies**
@@ -73,29 +74,29 @@ ApeX Options is a Matrix-inspired options trading platform skeleton featuring a 
 ## 📁 Project Structure
 
 ```
-apex-options/
+apeyolo/
 ├── client/                 # React frontend
 │   ├── src/
 │   │   ├── components/    # UI components
-│   │   │   └── ChatWindow.tsx
-│   │   ├── lib/          # Utilities
-│   │   └── index.css     # Matrix theme styles
+│   │   ├── pages/         # Page components
+│   │   ├── lib/          # Utilities & API
+│   │   └── index.css     # Monochrome theme styles
 │   └── index.html        # HTML entry point
 ├── server/                # Express backend
 │   ├── routes.ts         # API routes
 │   └── index.ts          # Server entry
 ├── shared/               # Shared types
-└── legacy_backup_*/      # Previous versions
+└── design_guidelines.md  # Design system documentation
 ```
 
 ## 🎨 Design Philosophy
 
-ApeX Options embraces the **Matrix aesthetic** with:
-- **Neon green glowing effects** on interactive elements
-- **Falling code animation** in the background (low opacity)
-- **Cyber-noir color palette** (black, neon green, cyber blue)
-- **Orbitron font** for futuristic branding
-- **Grid-based layouts** with subtle neon borders
+APEYOLO embraces a **monochrome professional aesthetic** with:
+- **Clean black/white/grey palette** for clarity and focus
+- **Century Gothic typography** for modern, readable text
+- **Hairline borders** (1px rgba(255,255,255,0.1)) for subtle definition
+- **Minimal animations** - focus on functionality over flash
+- **Professional trading aesthetic** that prioritizes usability
 
 ## 🔧 Development
 
@@ -106,28 +107,31 @@ ApeX Options embraces the **Matrix aesthetic** with:
 - `npm run preview` - Preview production build
 - `npm run db:push` - Sync database schema
 
-### Key Components
+### Core Pages
 
-- **ChatWindow**: Main agentic interface with Matrix theme
-- **MatrixRain**: Falling code background animation
-- **Sidebar Navigation**: Sessions, Positions, P&L, Settings
+- **Dashboard**: Open positions, leverage, NAV, withdrawals (open + historical)
+- **PNL (Track Record)**: Immutable trade history with SHA-256 hashing
+- **Settings**: IBKR OAuth2 connection, risk preferences (aggression slider, leverage cap, max loss/day)
+- **Sessions**: Agentic chat interface for natural language trading commands
+- **Onboarding**: 3-step flow (Google login, IBKR connection, risk preferences)
 
 ## 📝 Branding
 
-The **ApeX** logo features:
-- "Ape" in standard Orbitron font
-- "**X**" highlighted in neon green (`#00FF00`) with glow effect
-- "Options" in standard Orbitron font
+**APEYOLO** - "THE SAFEST WAY TO YOLO."
 
-Tagline: _"At the Apex of Options Trading – where discipline meets tribe."_
+The brand emphasizes:
+- Professional, systematic approach to options trading
+- AI-powered automation with human oversight
+- Institutional-grade risk management for retail traders
+- Clean, minimal design that focuses on data and functionality
 
 ## 🌐 Future Enhancements
 
-- [ ] AI-powered trade recommendations
-- [ ] Advanced charting with TradingView integration
-- [ ] Multi-user chat and collaboration
+- [ ] Blockchain anchoring for immutable P&L records
+- [ ] Advanced AI strategy customization
+- [ ] Multi-broker support
 - [ ] Mobile app (React Native)
-- [ ] Algorithmic trading integration
+- [ ] Real-time collaboration features
 
 ## 📄 License
 
@@ -139,4 +143,4 @@ Contributions welcome! Please read CONTRIBUTING.md first.
 
 ---
 
-**Built with 💚 in the Matrix**
+**Built for traders who understand that the safest YOLO is a calculated one.**

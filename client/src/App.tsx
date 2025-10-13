@@ -32,8 +32,9 @@ function Navigation() {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
             <Link href="/">
-              <a className="text-xl font-bold" data-testid="link-logo">
-                ApeX Options
+              <a className="flex flex-col" data-testid="link-logo">
+                <span className="text-xl font-bold tracking-wide">APEYOLO</span>
+                <span className="text-[10px] text-silver tracking-wider -mt-1">THE SAFEST WAY TO YOLO.</span>
               </a>
             </Link>
             <div className="hidden md:flex items-center gap-1">

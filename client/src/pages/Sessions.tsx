@@ -16,7 +16,7 @@ export function Sessions() {
     {
       id: '1',
       role: 'assistant',
-      content: 'Welcome to ApeX Options. I can help you execute trades, analyze positions, and manage your portfolio. Try commands like "sell SPY put at 450" or "show my positions".',
+      content: 'Welcome to APEYOLO. I can help you execute trades, analyze positions, and manage your portfolio. Try commands like "sell SPY put at 450" or "show my positions".',
       timestamp: new Date(),
     },
   ]);
