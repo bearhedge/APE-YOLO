@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getPNL } from '@/lib/api';
+import { LeftNav } from '@/components/LeftNav';
 import type { PnlRow } from '@shared/types';
 
 export function PNL() {
@@ -154,20 +155,25 @@ export function PNL() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <div className="skeleton h-8 w-48" />
-        <div className="skeleton h-96" />
+      <div className="flex h-[calc(100vh-64px)]">
+        <LeftNav />
+        <div className="flex-1 p-6 space-y-6">
+          <div className="skeleton h-8 w-48" />
+          <div className="skeleton h-96" />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <SectionHeader
-        title="Track Record"
-        subtitle="Immutable trading history - read-only audit log"
-        testId="header-pnl"
-      />
+    <div className="flex h-[calc(100vh-64px)]">
+      <LeftNav />
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <SectionHeader
+          title="Track Record"
+          subtitle="Immutable trading history - read-only audit log"
+          testId="header-pnl"
+        />
 
       <div className="bg-charcoal rounded-2xl p-6 border border-white/10 shadow-lg">
         <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -262,6 +268,7 @@ export function PNL() {
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

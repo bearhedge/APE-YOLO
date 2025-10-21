@@ -1,0 +1,42 @@
+import { Link, useLocation } from 'wouter';
+import { LayoutDashboard, Bot, Briefcase, TrendingUp, List, Settings, MessageSquare, DollarSign } from 'lucide-react';
+
+const navItems = [
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/agent', label: 'Agent', icon: Bot },
+  { path: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  { path: '/trades', label: 'Trades', icon: TrendingUp },
+  { path: '/jobs', label: 'Jobs', icon: List },
+  { path: '/sessions', label: 'Sessions', icon: MessageSquare },
+  { path: '/pnl', label: 'PNL', icon: DollarSign },
+  { path: '/settings', label: 'Settings', icon: Settings },
+];
+
+export function LeftNav() {
+  const [location] = useLocation();
+
+  return (
+    <div className="w-20 bg-charcoal border-r border-white/10 flex flex-col items-center py-6 space-y-2">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = location === item.path;
+        return (
+          <Link key={item.path} href={item.path}>
+            <a
+              className={`flex flex-col items-center justify-center w-16 h-16 rounded-lg transition-colors ${
+                isActive
+                  ? 'bg-white text-black'
+                  : 'text-silver hover:text-white hover:bg-dark-gray'
+              }`}
+              data-testid={`leftnav-${item.label.toLowerCase()}`}
+              title={item.label}
+            >
+              <Icon className="w-5 h-5" />
+              <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+            </a>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}

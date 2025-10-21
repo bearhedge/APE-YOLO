@@ -3,6 +3,7 @@ import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SectionHeader } from '@/components/SectionHeader';
+import { LeftNav } from '@/components/LeftNav';
 
 interface Message {
   id: string;
@@ -55,14 +56,16 @@ export function Sessions() {
   };
 
   return (
-    <div className="p-6 h-screen flex flex-col">
-      <SectionHeader
-        title="Sessions"
-        subtitle="Agentic trading interface - execute commands via natural language"
-        testId="header-sessions"
-      />
+    <div className="flex h-[calc(100vh-64px)]">
+      <LeftNav />
+      <div className="flex-1 flex flex-col p-6">
+        <SectionHeader
+          title="Sessions"
+          subtitle="Agentic trading interface - execute commands via natural language"
+          testId="header-sessions"
+        />
 
-      <div className="flex-1 bg-charcoal rounded-2xl border border-white/10 shadow-lg flex flex-col overflow-hidden">
+        <div className="flex-1 bg-charcoal rounded-2xl border border-white/10 shadow-lg flex flex-col overflow-hidden mt-6">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((message) => (
@@ -109,6 +112,7 @@ export function Sessions() {
           </div>
         </div>
       </div>
+    </div>
     </div>
   );
 }
