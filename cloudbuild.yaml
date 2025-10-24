@@ -22,7 +22,6 @@ steps:
     args:
       - push
       - asia-east1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
-
   - id: 'Deploy to Cloud Run'
     name: 'gcr.io/cloud-builders/gcloud'
     args:
@@ -31,7 +30,6 @@ steps:
       - ${_SERVICE}
       - --image=asia-east1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
       - --region=${_REGION}
-      - --allow-unauthenticated
-
+      - --quiet
 images:
   - asia-east1-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$COMMIT_SHA
