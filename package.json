@@ -39,6 +39,7 @@
     "@radix-ui/react-tabs": "^1.1.4"
   },
   "devDependencies": {
+    "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@types/node": "^24.9.1",
     "@vitejs/plugin-react": "^4.7.0",
     "esbuild": "^0.25.11",
