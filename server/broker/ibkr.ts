@@ -11,7 +11,17 @@ import axios, { AxiosInstance } from 'axios';
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import { randomUUID } from "crypto";
+import { webcrypto as nodeWebcrypto } from 'node:crypto';
 import { storage } from "../storage";
+
+// Ensure WebCrypto is available for `jose` in Node (required for RS256, etc.)
+// In some environments, globalThis.crypto is not defined by default.
+// This shim is safe to run multiple times.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+if (!(globalThis as any).crypto) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).crypto = nodeWebcrypto as unknown as Crypto;
+}
 
 type SsoResult = { ok: boolean; status: number; body?: any; reqId?: string };
 
@@ -83,6 +93,7 @@ class IbkrClient {
   private ssoSessionId: string | null = null;
   private ssoAccessToken: string | null = null;
   private sessionReady = false;
+  private accountSelected = false;
   private last: IbkrDiagnostics = {
     oauth: { status: null, ts: "" },
     sso: { status: null, ts: "" },
@@ -103,6 +114,21 @@ class IbkrClient {
       validateStatus: () => true,
       headers: { 'User-Agent': 'apeyolo/1.0' },
     }));
+  }
+
+  private async ensureAccountSelected(): Promise<void> {
+    const acct = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
+    if (!acct || this.accountSelected) return;
+    // CP endpoint - use cookie auth only, no Authorization header
+    const resp = await this.http.post('/v1/api/iserver/account', { acctId: acct }, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    console.log(`[IBKR][ensureAccountSelected] status=${resp.status} acctId=${acct}`);
+    if (resp.status >= 200 && resp.status < 300) {
+      this.accountSelected = true;
+      // Brief delay to let account selection take effect
+      await this.sleep(500);
+    }
   }
 
   private now() {
@@ -355,18 +381,29 @@ class IbkrClient {
 
   async getAccount(): Promise<AccountInfo> {
     await this.ensureReady();
+    await this.ensureAccountSelected();
     const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
     try {
-      const resp = await this.http.get(`/v1/api/portfolio/${encodeURIComponent(accountId)}/summary`, { headers: this.authHeaders() });
+      // CP endpoint - use cookie auth only, no Authorization header
+      const resp = await this.http.get(`/v1/api/portfolio/${encodeURIComponent(accountId)}/summary`);
+      const bodySnippet = typeof resp.data === 'string' ? resp.data.slice(0, 200) : JSON.stringify(resp.data || {}).slice(0, 200);
+      console.log(`[IBKR][getAccount] status=${resp.status} body=${bodySnippet}`);
       if (resp.status !== 200) throw new Error(`status ${resp.status}`);
       const data = resp.data as any;
+      // IBKR returns nested objects with 'amount' field
+      const getValue = (field: any): number => {
+        if (typeof field === 'number') return field;
+        if (field?.amount !== undefined) return Number(field.amount);
+        if (field?.value !== undefined) return Number(field.value);
+        return 0;
+      };
       const info: AccountInfo = {
         accountNumber: accountId || "",
-        buyingPower: Number(data?.availablefunds || 0),
-        portfolioValue: Number(data?.equitywithloanvalue || 0),
-        netDelta: Number(data?.netdelta || 0),
-        dayPnL: Number(data?.daytradesremaining || 0),
-        marginUsed: Number(data?.initialmargin || 0),
+        buyingPower: getValue(data?.availablefunds || data?.AvailableFunds),
+        portfolioValue: getValue(data?.equitywithloanvalue || data?.EquityWithLoanValue || data?.netLiquidation),
+        netDelta: getValue(data?.netdelta || data?.NetDelta),
+        dayPnL: getValue(data?.daytradesremaining || data?.DayTradesRemaining),
+        marginUsed: getValue(data?.initialmargin || data?.InitialMargin),
       };
       return info;
     } catch {
@@ -384,9 +421,13 @@ class IbkrClient {
 
   async getPositions(): Promise<Position[]> {
     await this.ensureReady();
+    await this.ensureAccountSelected();
     const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
     try {
-      const resp = await this.http.get(`/v1/api/portfolio/${encodeURIComponent(accountId)}/positions`, { headers: this.authHeaders() });
+      // CP endpoint - use cookie auth only, no Authorization header
+      const resp = await this.http.get(`/v1/api/portfolio/${encodeURIComponent(accountId)}/positions`);
+      const bodySnippet = typeof resp.data === 'string' ? resp.data.slice(0, 200) : JSON.stringify(resp.data || {}).slice(0, 200);
+      console.log(`[IBKR][getPositions] status=${resp.status} body=${bodySnippet}`);
       if (resp.status !== 200) throw new Error(`status ${resp.status}`);
       const items = (resp.data as any[]) || [];
       // Minimal mapping: only map options legs we can infer; return empty if unknown
@@ -414,12 +455,44 @@ class IbkrClient {
   }
 
   private async resolveConid(symbol: string): Promise<number | null> {
+    await this.ensureAccountSelected();
     const url = `/v1/api/iserver/secdef/search`;
-    const resp = await this.http.get(`${url}?symbol=${encodeURIComponent(symbol)}&name=${encodeURIComponent(symbol)}&secType=STK`, { headers: this.authHeaders() });
-    if (resp.status !== 200) return null;
-    const arr = (resp.data as any[]) || [];
-    const first = arr?.[0];
-    return typeof first?.conid === "number" ? first.conid : null;
+    const parse = (data: any): number | null => {
+      if (!data) return null;
+      if (Array.isArray(data)) {
+        for (const it of data) {
+          // IBKR returns conid as string, not number
+          if (it?.conid) return parseInt(it.conid, 10);
+          if (it?.contract?.conid) return parseInt(it.contract.conid, 10);
+        }
+      }
+      const sections = data?.sections;
+      if (Array.isArray(sections)) {
+        for (const sec of sections) {
+          const res = parse(sec?.results || sec?.contracts || sec);
+          if (res !== null) return res;
+        }
+      }
+      return null;
+    };
+    try {
+      // CP endpoint - use cookie auth only, no Authorization header
+      const resp = await this.http.get(`${url}?symbol=${encodeURIComponent(symbol)}&name=${encodeURIComponent(symbol)}&secType=STK`);
+      const bodySnippet = typeof resp.data === 'string' ? resp.data.slice(0, 200) : JSON.stringify(resp.data || {}).slice(0, 200);
+      console.log(`[IBKR][resolveConid] attempt1 status=${resp.status} body=${bodySnippet}`);
+      if (resp.status === 200) {
+        const c = parse(resp.data);
+        if (typeof c === 'number') return c;
+      }
+    } catch {}
+    try {
+      // CP endpoint - use cookie auth only, no Authorization header
+      const resp2 = await this.http.get(`${url}?symbol=${encodeURIComponent(symbol)}`);
+      const bodySnippet2 = typeof resp2.data === 'string' ? resp2.data.slice(0, 200) : JSON.stringify(resp2.data || {}).slice(0, 200);
+      console.log(`[IBKR][resolveConid] attempt2 status=${resp2.status} body=${bodySnippet2}`);
+      if (resp2.status === 200) return parse(resp2.data);
+    } catch {}
+    return null;
   }
 
   async getOptionChain(symbol: string, expiration?: string): Promise<OptionChainData> {
@@ -429,7 +502,8 @@ class IbkrClient {
     try {
       const conid = await this.resolveConid(symbol);
       if (conid) {
-        const snap = await this.http.get(`/v1/api/iserver/marketdata/snapshot?conids=${conid}`, { headers: this.authHeaders() });
+        // CP endpoint - use cookie auth only, no Authorization header
+        const snap = await this.http.get(`/v1/api/iserver/marketdata/snapshot?conids=${conid}`);
         if (snap.status === 200) {
           const data = (snap.data as any[]) || [];
           const last = data?.[0]?.["31"] ?? data?.[0]?.last;
@@ -484,7 +558,7 @@ class IbkrClient {
 
     const url = `/v1/api/iserver/account/${encodeURIComponent(accountId)}/orders`;
     const reqId = randomUUID();
-    const resp = await this.http.post(url, body, { headers: { ...this.authHeaders(), 'Content-Type': 'application/json' } });
+    const resp = await this.http.post(url, body, { headers: { 'Content-Type': 'application/json' } });
 
     const http = resp.status;
     const raw: any = resp.data;
@@ -520,6 +594,7 @@ class IbkrClient {
     opts?: { orderType?: 'MKT'|'LMT'; limitPrice?: number; tif?: 'DAY'|'GTC'; outsideRth?: boolean }
   ): Promise<{ id?: string; status: string; raw?: any }> {
     await this.ensureReady();
+    await this.ensureAccountSelected();
     const accountId = this.accountId || process.env.IBKR_ACCOUNT_ID || "";
     if (!symbol || !accountId || !quantity || quantity <= 0) {
       return { status: "rejected_400" };
@@ -550,7 +625,8 @@ class IbkrClient {
     const body = { orders: [ order ] };
     const url2 = `/v1/api/iserver/account/${encodeURIComponent(accountId)}/orders`;
     const reqId2 = randomUUID();
-    const resp2 = await this.http.post(url2, body, { headers: { ...this.authHeaders(), 'Content-Type': 'application/json' } });
+    // CP endpoint - use cookie auth only, no Authorization header
+    const resp2 = await this.http.post(url2, body, { headers: { 'Content-Type': 'application/json' } });
     const http2 = resp2.status;
     const raw2: any = resp2.data;
     if (!(resp2.status >= 200 && resp2.status < 300)) {
@@ -564,7 +640,8 @@ class IbkrClient {
     try {
       const arr = Array.isArray(raw2) ? raw2 : raw2?.orders || raw2?.data || [];
       const first = Array.isArray(arr) ? arr[0] : undefined;
-      orderId2 = String(first?.id || first?.orderId || first?.c_oid || "").trim() || undefined;
+      // IBKR returns order_id field
+      orderId2 = String(first?.order_id || first?.id || first?.orderId || first?.c_oid || "").trim() || undefined;
     } catch {}
     await storage.createAuditLog({ eventType: "IBKR_ORDER_SUBMIT", details: `OK http=${http2} req=${reqId2} orderId=${orderId2 ?? 'n/a'}` , status: "SUCCESS" });
     return { id: orderId2, status: "submitted", raw: raw2 };
@@ -572,10 +649,12 @@ class IbkrClient {
 
   async getOpenOrders(): Promise<any[]> {
     await this.ensureReady();
+    await this.ensureAccountSelected();
     // Attempt standard open orders endpoint
     const ordersUrl = `/v1/api/iserver/account/orders`;
     const reqId3 = randomUUID();
-    const resp3 = await this.http.get(ordersUrl, { headers: this.authHeaders() });
+    // CP endpoint - use cookie auth only, no Authorization header
+    const resp3 = await this.http.get(ordersUrl);
     const http3 = resp3.status;
     if (!(resp3.status >= 200 && resp3.status < 300)) {
       let snippet = "";
@@ -627,4 +706,15 @@ export async function placePaperStockOrder(params: { symbol: string; side: 'BUY'
 export async function listPaperOpenOrders() {
   if (!activeClient) throw new Error('IBKR client not initialized');
   return activeClient.getOpenOrders();
+}
+
+// Ensure IBKR client is ready and return latest diagnostics
+export async function ensureIbkrReady(): Promise<IbkrDiagnostics> {
+  if (!activeClient) throw new Error('IBKR client not initialized');
+  // @ts-ignore ensureReady is defined on IbkrClient
+  if (typeof (activeClient as any).ensureReady === 'function') {
+    // Await readiness bootstrap (OAuth → SSO → validate → etc.)
+    await (activeClient as any).ensureReady();
+  }
+  return activeClient.getDiagnostics();
 }
